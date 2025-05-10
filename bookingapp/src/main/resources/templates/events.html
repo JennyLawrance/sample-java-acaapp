@@ -32,6 +32,19 @@
         .sold-out-btn {
             cursor: pointer;
         }
+        .btn-dark-red {
+            background-color: #8B0000;
+            border-color: #8B0000;
+            color: white;
+        }
+        .btn-dark-red:hover {
+            background-color: #6B0000;
+            border-color: #6B0000;
+            color: white;
+        }
+        .bg-dark-red {
+            background-color: #8B0000 !important;
+        }
     </style>
 </head>
 <body>
@@ -63,7 +76,7 @@
                     <div th:class="${concert.totalSeats - concert.bookings.size() <= 0 ? 'card event-card sold-out' : 'card event-card'}">
                         <div class="card-body">
                             <span th:if="${concert.totalSeats - concert.bookings.size() <= 0}" 
-                                  class="badge bg-danger event-badge">SOLD OUT</span>
+                                  class="badge bg-dark-red event-badge">SOLD OUT</span>
                             <span th:if="${concert.totalSeats - concert.bookings.size() <= concert.totalSeats * 0.1 && concert.totalSeats - concert.bookings.size() > 0}" 
                                   class="badge bg-warning text-dark event-badge">ALMOST SOLD OUT</span>
                             
@@ -91,7 +104,7 @@
                                 
                                 <!-- For sold out concerts -->
                                 <button th:if="${concert.totalSeats - concert.bookings.size() <= 0}" 
-                                        class="btn btn-sm btn-danger sold-out-btn"
+                                        class="btn btn-sm btn-dark-red sold-out-btn"
                                         th:data-concert-id="${concert.id}">
                                     <i class="bi bi-exclamation-triangle"></i> Sold Out
                                 </button>

@@ -32,6 +32,24 @@
             font-size: 1.2rem;
             padding: 8px 16px;
         }
+        .btn-dark-red {
+            background-color: #8B0000;
+            border-color: #8B0000;
+            color: white;
+        }
+        .btn-dark-red:hover {
+            background-color: #6B0000;
+            border-color: #6B0000;
+            color: white;
+        }
+        .bg-dark-red {
+            background-color: #8B0000 !important;
+        }
+        .alert-dark-red {
+            color: #fff;
+            background-color: #8B0000;
+            border-color: #6B0000;
+        }
     </style>
 </head>
 <body>
@@ -43,7 +61,7 @@
                     <h4 class="text-muted" th:text="${concert.artist}">Artist Name</h4>
                 </div>
                 <div>
-                    <span th:if="${isSoldOut}" class="badge bg-danger sold-out-badge">SOLD OUT</span>
+                    <span th:if="${isSoldOut}" class="badge bg-dark-red sold-out-badge">SOLD OUT</span>
                 </div>
             </div>
         </div>
@@ -150,12 +168,12 @@
                         </div>
                         
                         <div th:if="${isSoldOut}" class="d-grid gap-2">
-                            <button class="btn btn-danger btn-lg" id="soldOutButton">
+                            <button class="btn btn-dark-red btn-lg" id="soldOutButton">
                                 <i class="bi bi-exclamation-triangle"></i> Sold Out - Try Anyway
                             </button>
                         </div>
                         
-                        <div th:if="${isSoldOut}" class="alert alert-danger mt-3">
+                        <div th:if="${isSoldOut}" class="alert alert-dark-red mt-3">
                             <i class="bi bi-exclamation-triangle"></i> This event is sold out.
                         </div>
                         
