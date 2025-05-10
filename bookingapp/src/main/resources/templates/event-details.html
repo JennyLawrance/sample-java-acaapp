@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${concert.name + ' - Event Details'}">Event Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <style>
+        .event-header {
+            background-color: #f8f9fa;
+            padding: 30px 0;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .info-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            background-color: rgba(13, 110, 253, 0.05);
+        }
+        .info-label {
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .event-actions {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .sold-out-badge {
+            font-size: 1.2rem;
+            padding: 8px 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="event-header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 th:text="${concert.name}">Event Name</h1>
+                    <h4 class="text-muted" th:text="${concert.artist}">Artist Name</h4>
+                </div>
+                <div>
+                    <span th:if="${isSoldOut}" class="badge bg-danger sold-out-badge">SOLD OUT</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mb-5">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h3>Event Details</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <span class="info-label"><i class="bi bi-calendar-event"></i> Date:</span>
+                                    <span th:text="${concert.dateTime.format(dateFormatter)}">2025-06-15</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <span class="info-label"><i class="bi bi-clock"></i> Time:</span>
+                                    <span th:text="${concert.dateTime.format(timeFormatter)}">20:00</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <span class="info-label"><i class="bi bi-geo-alt"></i> Venue:</span>
+                                    <span th:text="${concert.venue}">Central Stadium</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <span class="info-label"><i class="bi bi-people"></i> Available Seats:</span>
+                                    <span th:text="${eventInfo.get('Available Seats')}">500</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <span class="info-label"><i class="bi bi-clock-history"></i> Duration:</span>
+                                    <span th:text="${eventInfo.get('Duration')}">2 hours</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <span class="info-label"><i class="bi bi-door-open"></i> Doors Open:</span>
+                                    <span th:text="${eventInfo.get('Doors Open')}">19:00</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <span class="info-label"><i class="bi bi-music-note-beamed"></i> Genre:</span>
+                                    <span th:text="${eventInfo.get('Genre')}">Rock</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <span class="info-label"><i class="bi bi-person-badge"></i> Age Restriction:</span>
+                                    <span th:text="${eventInfo.get('Age Restriction')}">All ages welcome</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3>About the Event</h3>
+                    </div>
+                    <div class="card-body">
+                        <p>Join us for an unforgettable night of music with <strong th:text="${concert.artist}">Artist Name</strong> at <strong th:text="${concert.venue}">Venue Name</strong>. Experience the magic of live performance in one of our most popular events of the season.</p>
+                        
+                        <p>Don't miss this opportunity to see one of the most exciting acts in the music scene today! Secure your tickets now to avoid disappointment.</p>
+                        
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Ticket price: $<span th:text="${#numbers.formatDecimal(concert.price, 1, 2)}">50.00</span> per person
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card event-actions">
+                    <div class="card-body text-center">
+                        <h4 class="mb-4">Ticket Information</h4>
+                        
+                        <p class="fs-2 fw-bold">$<span th:text="${#numbers.formatDecimal(concert.price, 1, 2)}">50.00</span></p>
+                        <p class="mb-4">per ticket</p>
+                        
+                        <div th:if="${!isSoldOut}" class="d-grid gap-2">
+                            <a th:href="@{/events/book/{id}(id=${concert.id})}" class="btn btn-primary btn-lg">
+                                <i class="bi bi-ticket-perforated"></i> Book Tickets
+                            </a>
+                        </div>
+                        
+                        <div th:if="${isSoldOut}" class="d-grid gap-2">
+                            <button class="btn btn-danger btn-lg" id="soldOutButton">
+                                <i class="bi bi-exclamation-triangle"></i> Sold Out - Try Anyway
+                            </button>
+                        </div>
+                        
+                        <div th:if="${isSoldOut}" class="alert alert-danger mt-3">
+                            <i class="bi bi-exclamation-triangle"></i> This event is sold out.
+                        </div>
+                        
+                        <hr class="my-4">
+                        
+                        <div class="text-start">
+                            <h5>Important Info</h5>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check-circle text-success"></i> E-tickets available</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Instant confirmation</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Mobile tickets accepted</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2 mt-4">
+                    <a href="/events" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Events
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const soldOutButton = document.getElementById('soldOutButton');
+            if (soldOutButton) {
+                soldOutButton.addEventListener('click', function() {
+                    window.location.href = '/events/book/[[${concert.id}]]';
+                });
+            }
+        });
+    </script>
+</body>
+</html> 

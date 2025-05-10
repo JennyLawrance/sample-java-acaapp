@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Upcoming Events</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <style>
+        .event-card {
+            transition: transform 0.3s ease;
+            margin-bottom: 20px;
+        }
+        .event-card:hover {
+            transform: translateY(-5px);
+        }
+        .date-header {
+            background-color: #f8f9fa;
+            padding: 10px;
+            margin-top: 20px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #0d6efd;
+        }
+        .event-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+        .sold-out {
+            opacity: 0.7;
+        }
+        .sold-out-btn {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Upcoming Events</h1>
+            <div>
+                <a href="/concerts" class="btn btn-outline-primary me-2">
+                    <i class="bi bi-list-ul"></i> Concert Listings
+                </a>
+            </div>
+        </div>
+
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle-fill"></i> Browse our upcoming events calendar. Click on any event for more details and booking options.
+        </div>
+
+        <div th:if="${concertsByDate.isEmpty()}" class="alert alert-warning">
+            No upcoming events found.
+        </div>
+
+        <div th:each="dateEntry : ${concertsByDate}">
+            <div class="date-header">
+                <h3 th:text="${dateEntry.key}">2025-06-01</h3>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6 col-lg-4" th:each="concert : ${dateEntry.value}">
+                    <div th:class="${concert.totalSeats - concert.bookings.size() <= 0 ? 'card event-card sold-out' : 'card event-card'}">
+                        <div class="card-body">
+                            <span th:if="${concert.totalSeats - concert.bookings.size() <= 0}" 
+                                  class="badge bg-danger event-badge">SOLD OUT</span>
+                            <span th:if="${concert.totalSeats - concert.bookings.size() <= concert.totalSeats * 0.1 && concert.totalSeats - concert.bookings.size() > 0}" 
+                                  class="badge bg-warning text-dark event-badge">ALMOST SOLD OUT</span>
+                            
+                            <h5 class="card-title" th:text="${concert.name}">Event Name</h5>
+                            <h6 class="card-subtitle mb-2 text-muted" th:text="${concert.artist}">Artist</h6>
+                            
+                            <p class="card-text">
+                                <i class="bi bi-clock"></i> <span th:text="${concert.dateTime.format(timeFormatter)}">20:00</span><br>
+                                <i class="bi bi-geo-alt"></i> <span th:text="${concert.venue}">Venue</span><br>
+                                <i class="bi bi-cash"></i> $<span th:text="${#numbers.formatDecimal(concert.price, 1, 2)}">50.00</span><br>
+                                <i class="bi bi-people"></i> <span th:text="${concert.totalSeats - concert.bookings.size()}">250</span> seats left
+                            </p>
+                            
+                            <div class="d-flex justify-content-between mt-3">
+                                <a th:href="@{/events/{id}(id=${concert.id})}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-info-circle"></i> Event Details
+                                </a>
+                                
+                                <!-- For available concerts -->
+                                <a th:if="${concert.totalSeats - concert.bookings.size() > 0}" 
+                                   th:href="@{/events/book/{id}(id=${concert.id})}" 
+                                   class="btn btn-sm btn-primary">
+                                    <i class="bi bi-ticket-perforated"></i> Book Tickets
+                                </a>
+                                
+                                <!-- For sold out concerts -->
+                                <button th:if="${concert.totalSeats - concert.bookings.size() <= 0}" 
+                                        class="btn btn-sm btn-danger sold-out-btn"
+                                        th:data-concert-id="${concert.id}">
+                                    <i class="bi bi-exclamation-triangle"></i> Sold Out
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click event listeners to all sold out buttons
+            document.querySelectorAll('.sold-out-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const concertId = this.getAttribute('data-concert-id');
+                    window.location.href = '/events/book/' + concertId;
+                });
+            });
+        });
+    </script>
+</body>
+</html> 

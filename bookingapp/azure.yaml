@@ -1,0 +1,25 @@
+name: concert-booking-app
+metadata:
+  template: concert-booking-app@0.0.1
+services:
+  app:
+    project: .
+    language: java
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+hooks:
+  postprovision:
+    windows:
+      shell: pwsh
+      run: ./infra/hooks/postprovision.ps1
+    posix:
+      shell: bash
+      run: ./infra/hooks/postprovision.sh
+  postdeploy:
+    windows:
+      shell: pwsh
+      run: ./infra/hooks/postdeploy.ps1
+    posix:
+      shell: bash
+      run: ./infra/hooks/postdeploy.sh 
