@@ -32,58 +32,6 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2022-02-01-pr
   }
 }
 
-// Container App resource
-resource containerApp 'Microsoft.App/containerApps@2022-03-01' = {
-  name: 'ca-${environmentName}'
-  location: location
-  tags: tags
-  properties: {
-    managedEnvironmentId: containerAppsEnvironment.id
-    configuration: {
-      ingress: {
-        external: true
-        targetPort: 8080
-        allowInsecure: false
-        traffic: [
-          {
-            latestRevision: true
-            weight: 100
-          }
-        ]
-      }
-      registries: [
-        {
-          server: containerRegistry.properties.loginServer
-          username: containerRegistry.name
-          passwordSecretRef: 'registry-password'
-        }
-      ]
-      secrets: [
-        {
-          name: 'registry-password'
-          value: containerRegistry.listCredentials().passwords[0].value
-        }
-      ]
-    }
-    template: {
-      containers: [
-        {
-          name: 'concert-booking-app'
-          image: '${containerRegistry.properties.loginServer}/concert-booking-app:latest'
-          resources: {
-            cpu: json('0.5')
-            memory: '1Gi'
-          }
-        }
-      ]
-      scale: {
-        minReplicas: 1
-        maxReplicas: 3
-      }
-    }
-  }
-}
-
 // Log Analytics workspace for the Container Apps environment
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2021-12-01-preview' = {
   name: 'law-${environmentName}'
@@ -103,7 +51,9 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2021-12
   }
 }
 
-output CONTAINER_APP_URL string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
+// Output the necessary values for the container app deployment
 output CONTAINER_REGISTRY_URL string = containerRegistry.properties.loginServer
 output CONTAINER_REGISTRY_USERNAME string = containerRegistry.name
-output CONTAINER_REGISTRY_PASSWORD string = containerRegistry.listCredentials().passwords[0].value 
+output CONTAINER_REGISTRY_PASSWORD string = containerRegistry.listCredentials().passwords[0].value
+output CONTAINER_APPS_ENVIRONMENT_ID string = containerAppsEnvironment.id
+output CONTAINER_APP_URL string = 'placeholder-will-be-replaced' 

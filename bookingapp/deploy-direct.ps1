@@ -1,7 +1,107 @@
-# This script runs after infrastructure provisioning
-# Import the image to Azure Container Registry
+# Direct deployment script for Azure Container Apps
+# This script bypasses azd hooks and directly handles the deployment process
 
-Write-Host "Importing the Docker image to Azure Container Registry..." -ForegroundColor Cyan
+param (
+    [switch]$skipProvision = $false,
+    [string]$location = "eastus"
+)
+
+Write-Host "Starting direct deployment to Azure Container Apps..." -ForegroundColor Cyan
+
+# Check if Azure CLI is installed
+try {
+    $azVersion = az version
+    Write-Host "Azure CLI is installed." -ForegroundColor Green
+} catch {
+    Write-Host "Error: Azure CLI is not installed or not in PATH." -ForegroundColor Red
+    Write-Host "Please install Azure CLI: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli" -ForegroundColor Yellow
+    exit 1
+}
+
+# Check if logged in to Azure
+Write-Host "Checking Azure login status..." -ForegroundColor Cyan
+$account = az account show 2>$null | ConvertFrom-Json
+if (-not $account) {
+    Write-Host "Not logged in to Azure. Logging in now..." -ForegroundColor Yellow
+    az login
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Failed to log in to Azure." -ForegroundColor Red
+        exit 1
+    }
+}
+Write-Host "Logged in to Azure as $($account.user.name)" -ForegroundColor Green
+
+# Get or set environment name
+if (Test-Path ".azure/config") {
+    $configContent = Get-Content -Path ".azure/config" -ErrorAction Stop
+    $ENV_NAME = ($configContent | Where-Object { $_ -match "name\s+=\s+(.*)" } | ForEach-Object { $matches[1] })
+    
+    if (-not $ENV_NAME) {
+        $ENV_NAME = "concert-booking-app"
+        Write-Host "Environment name not found. Using default: $ENV_NAME" -ForegroundColor Yellow
+    } else {
+        Write-Host "Using environment name from config: $ENV_NAME" -ForegroundColor Cyan
+    }
+} else {
+    $ENV_NAME = "concert-booking-app"
+    Write-Host "No .azure/config found. Using default environment name: $ENV_NAME" -ForegroundColor Yellow
+    
+    # Create .azure directory and config file
+    if (-not (Test-Path ".azure")) {
+        New-Item -ItemType Directory -Path ".azure" | Out-Null
+    }
+    
+    @"
+[defaults]
+location = $location
+
+[environment]
+name = $ENV_NAME
+"@ | Out-File -FilePath ".azure/config" -Encoding utf8
+}
+
+# Set resource group name
+$resourceGroup = "rg$ENV_NAME"
+
+# Check if resource group exists
+$rgExists = az group exists --name $resourceGroup
+if ($rgExists -eq "false") {
+    if (-not $skipProvision) {
+        Write-Host "Resource group $resourceGroup does not exist. Creating..." -ForegroundColor Yellow
+        az group create --name $resourceGroup --location $location
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Failed to create resource group." -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "Resource group created." -ForegroundColor Green
+    } else {
+        Write-Host "Resource group $resourceGroup does not exist and skipProvision is set. Cannot continue." -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Provision infrastructure if not skipped
+if (-not $skipProvision) {
+    Write-Host "Provisioning Azure resources..." -ForegroundColor Cyan
+    Write-Host "This may take several minutes..." -ForegroundColor Yellow
+    
+    # Deploy main infrastructure
+    Write-Host "Deploying main infrastructure..." -ForegroundColor Cyan
+    az deployment group create `
+        --resource-group $resourceGroup `
+        --template-file ./infra/resources.bicep `
+        --parameters `
+            environmentName=$ENV_NAME `
+            location=$location `
+            tags="{ 'azd-env-name': '$ENV_NAME' }"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Failed to provision infrastructure." -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-Host "Infrastructure provisioned successfully." -ForegroundColor Green
+}
 
 # Generate a unique tag using timestamp
 $timestamp = Get-Date -Format "yyyyMMddHHmmss"
@@ -16,32 +116,8 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Get environment name from config file
-try {
-    if (Test-Path ".azure/config") {
-        $configContent = Get-Content -Path ".azure/config" -ErrorAction Stop
-        $ENV_NAME = ($configContent | Where-Object { $_ -match "name\s+=\s+(.*)" } | ForEach-Object { $matches[1] })
-        
-        if (-not $ENV_NAME) {
-            throw "Could not find environment name in .azure/config"
-        }
-    } else {
-        throw "Could not find .azure/config file"
-    }
-    
-    Write-Host "Environment name: $ENV_NAME" -ForegroundColor Cyan
-} catch {
-    Write-Host "Error: Failed to get environment name: $_" -ForegroundColor Red
-    Write-Host "Make sure you're in the correct directory and have initialized the Azure Developer CLI environment." -ForegroundColor Yellow
-    exit 1
-}
-
-# Get resource group name
-$resourceGroup = "rg$ENV_NAME"
-Write-Host "Resource group: $resourceGroup" -ForegroundColor Cyan
-
 # Get Container Registry information using Azure CLI
-Write-Host "Getting Azure Container Registry credentials using Azure CLI..." -ForegroundColor Cyan
+Write-Host "Getting Azure Container Registry credentials..." -ForegroundColor Cyan
 
 try {
     # Get container registry name
@@ -62,27 +138,25 @@ try {
     $envInfo = az containerapp env list --resource-group $resourceGroup --query "[0]" | ConvertFrom-Json
     $CONTAINER_APPS_ENVIRONMENT_ID = $envInfo.id
     
-    # Get location
-    $LOCATION = $registryInfo.location
+    # Get location if not specified
+    if (-not $location -or $location -eq "") {
+        $location = $registryInfo.location
+    }
     
-    if (-not $REGISTRY_URL -or -not $REGISTRY_USERNAME -or -not $REGISTRY_PASSWORD -or -not $CONTAINER_APPS_ENVIRONMENT_ID -or -not $LOCATION) {
+    if (-not $REGISTRY_URL -or -not $REGISTRY_USERNAME -or -not $REGISTRY_PASSWORD -or -not $CONTAINER_APPS_ENVIRONMENT_ID) {
         throw "Missing required values from Azure resources"
     }
 } catch {
     Write-Host "Error: Failed to get Azure Container Registry credentials: $_" -ForegroundColor Red
     Write-Host "Make sure you're logged in to Azure and have provisioned the infrastructure." -ForegroundColor Red
-    Write-Host "Try running 'az login' and then 'azd provision' again." -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host "Environment values retrieved successfully." -ForegroundColor Green
 Write-Host "Registry URL: $REGISTRY_URL" -ForegroundColor Cyan
 Write-Host "Registry Name: $REGISTRY_NAME" -ForegroundColor Cyan
-Write-Host "Location: $LOCATION" -ForegroundColor Cyan
 
 # Log in to Azure Container Registry
 Write-Host "Logging in to Azure Container Registry..." -ForegroundColor Cyan
-
 try {
     # Use docker login with credentials
     $REGISTRY_PASSWORD | docker login $REGISTRY_URL -u $REGISTRY_USERNAME --password-stdin
@@ -116,12 +190,10 @@ try {
 }
 
 Write-Host "Image pushed to Azure Container Registry successfully." -ForegroundColor Green
-Write-Host "Now deploying the Container App..." -ForegroundColor Yellow
 
-# Deploy the Container App using the separate Bicep file
-Write-Host "Deploying Container App..." -ForegroundColor Cyan
+# Deploy the Container App
+Write-Host "Deploying Container App..." -ForegroundColor Yellow
 $tags = "{ 'azd-env-name': '$ENV_NAME' }"
-
 $deployment_name = "container-app-deployment-$timestamp"
 
 try {
@@ -131,7 +203,7 @@ try {
       --template-file ./infra/containerapp.bicep `
       --parameters `
         environmentName=$ENV_NAME `
-        location=$LOCATION `
+        location=$location `
         tags=$tags `
         containerAppsEnvironmentId=$CONTAINER_APPS_ENVIRONMENT_ID `
         containerRegistryLoginServer=$REGISTRY_URL `
@@ -147,14 +219,14 @@ try {
     exit 1
 }
 
-# Update the CONTAINER_APP_URL in the environment
+# Get the Container App URL
 try {
     $CONTAINER_APP_URL = (az containerapp show --name "ca-$ENV_NAME" --resource-group $resourceGroup --query "properties.configuration.ingress.fqdn" -o tsv)
     if ($LASTEXITCODE -ne 0 -or -not $CONTAINER_APP_URL) {
         throw "Failed to get Container App URL"
     }
     
-    # Use az CLI to store the values in local .env file since azd env set might have the same issue
+    # Store values in local .env file
     $envFilePath = ".azure/.env"
     
     # Create or update .env file
@@ -190,10 +262,10 @@ try {
     }
     
 } catch {
-    Write-Host "Error: Failed to update environment with Container App URL: $_" -ForegroundColor Red
+    Write-Host "Warning: Failed to get Container App URL: $_" -ForegroundColor Yellow
     # Continue anyway since the app is deployed
 }
 
-Write-Host "Container App deployed successfully!" -ForegroundColor Green
+Write-Host "`nDeployment completed successfully!" -ForegroundColor Green
 Write-Host "You can access your application at: https://$CONTAINER_APP_URL" -ForegroundColor Green
 Write-Host "Deployed image tag: $imageTag" -ForegroundColor Green 

@@ -48,6 +48,8 @@ resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   tags: tags
 }
 
+// Deploy infrastructure resources
+// This includes Container Registry and Container Apps Environment
 module resources 'resources.bicep' = {
   name: 'resources'
   scope: resourceGroup

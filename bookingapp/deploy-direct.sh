@@ -1,9 +1,124 @@
 #!/bin/bash
 
-# This script runs after infrastructure provisioning
-# Import the image to Azure Container Registry
+# Direct deployment script for Azure Container Apps
+# This script bypasses azd hooks and directly handles the deployment process
 
-echo -e "\033[0;36mImporting the Docker image to Azure Container Registry...\033[0m"
+# Default parameters
+location="eastus"
+skip_provision=false
+
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --location) location="$2"; shift ;;
+        --skip-provision) skip_provision=true ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+echo -e "\033[0;36mStarting direct deployment to Azure Container Apps...\033[0m"
+
+# Check if Azure CLI is installed
+if ! command -v az &> /dev/null; then
+    echo -e "\033[0;31mError: Azure CLI is not installed or not in PATH.\033[0m"
+    echo -e "\033[0;33mPlease install Azure CLI: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli\033[0m"
+    exit 1
+fi
+echo -e "\033[0;32mAzure CLI is installed.\033[0m"
+
+# Check if jq is installed (needed for JSON parsing)
+if ! command -v jq &> /dev/null; then
+    echo -e "\033[0;31mError: jq is not installed or not in PATH.\033[0m"
+    echo -e "\033[0;33mPlease install jq: https://stedolan.github.io/jq/download/\033[0m"
+    exit 1
+fi
+echo -e "\033[0;32mjq is installed.\033[0m"
+
+# Check if logged in to Azure
+echo -e "\033[0;36mChecking Azure login status...\033[0m"
+account=$(az account show 2>/dev/null)
+if [ $? -ne 0 ]; then
+    echo -e "\033[0;33mNot logged in to Azure. Logging in now...\033[0m"
+    az login
+    if [ $? -ne 0 ]; then
+        echo -e "\033[0;31mFailed to log in to Azure.\033[0m"
+        exit 1
+    fi
+fi
+user_name=$(echo $account | jq -r '.user.name')
+echo -e "\033[0;32mLogged in to Azure as $user_name\033[0m"
+
+# Get or set environment name
+if [ -f ".azure/config" ]; then
+    ENV_NAME=$(grep "name" .azure/config | awk '{print $3}')
+    
+    if [ -z "$ENV_NAME" ]; then
+        ENV_NAME="concert-booking-app"
+        echo -e "\033[0;33mEnvironment name not found. Using default: $ENV_NAME\033[0m"
+    else
+        echo -e "\033[0;36mUsing environment name from config: $ENV_NAME\033[0m"
+    fi
+else
+    ENV_NAME="concert-booking-app"
+    echo -e "\033[0;33mNo .azure/config found. Using default environment name: $ENV_NAME\033[0m"
+    
+    # Create .azure directory and config file
+    if [ ! -d ".azure" ]; then
+        mkdir -p ".azure"
+    fi
+    
+    cat > .azure/config << EOF
+[defaults]
+location = $location
+
+[environment]
+name = $ENV_NAME
+EOF
+fi
+
+# Set resource group name
+RESOURCE_GROUP="rg$ENV_NAME"
+
+# Check if resource group exists
+rg_exists=$(az group exists --name $RESOURCE_GROUP)
+if [ "$rg_exists" == "false" ]; then
+    if [ "$skip_provision" == false ]; then
+        echo -e "\033[0;33mResource group $RESOURCE_GROUP does not exist. Creating...\033[0m"
+        az group create --name $RESOURCE_GROUP --location $location
+        if [ $? -ne 0 ]; then
+            echo -e "\033[0;31mFailed to create resource group.\033[0m"
+            exit 1
+        fi
+        echo -e "\033[0;32mResource group created.\033[0m"
+    else
+        echo -e "\033[0;31mResource group $RESOURCE_GROUP does not exist and skip_provision is set. Cannot continue.\033[0m"
+        exit 1
+    fi
+fi
+
+# Provision infrastructure if not skipped
+if [ "$skip_provision" == false ]; then
+    echo -e "\033[0;36mProvisioning Azure resources...\033[0m"
+    echo -e "\033[0;33mThis may take several minutes...\033[0m"
+    
+    # Deploy main infrastructure
+    echo -e "\033[0;36mDeploying main infrastructure...\033[0m"
+    az deployment group create \
+        --resource-group $RESOURCE_GROUP \
+        --template-file ./infra/resources.bicep \
+        --parameters \
+            environmentName=$ENV_NAME \
+            location=$location \
+            tags="{ 'azd-env-name': '$ENV_NAME' }"
+    
+    if [ $? -ne 0 ]; then
+        echo -e "\033[0;31mFailed to provision infrastructure.\033[0m"
+        exit 1
+    fi
+    
+    echo -e "\033[0;32mInfrastructure provisioned successfully.\033[0m"
+fi
 
 # Generate a unique tag using timestamp
 timestamp=$(date +%Y%m%d%H%M%S)
@@ -18,26 +133,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Get environment name from config file
-if [ -f ".azure/config" ]; then
-    ENV_NAME=$(grep "name" .azure/config | awk '{print $3}')
-    if [ -z "$ENV_NAME" ]; then
-        echo -e "\033[0;31mError: Could not find environment name in .azure/config\033[0m"
-        exit 1
-    fi
-else
-    echo -e "\033[0;31mError: Could not find .azure/config file\033[0m"
-    exit 1
-fi
-
-echo -e "\033[0;36mEnvironment name: $ENV_NAME\033[0m"
-
-# Get resource group name
-RESOURCE_GROUP="rg$ENV_NAME"
-echo -e "\033[0;36mResource group: $RESOURCE_GROUP\033[0m"
-
 # Get Container Registry information using Azure CLI
-echo -e "\033[0;36mGetting Azure Container Registry credentials using Azure CLI...\033[0m"
+echo -e "\033[0;36mGetting Azure Container Registry credentials...\033[0m"
 
 # Get container registry name
 REGISTRY_INFO=$(az acr list --resource-group $RESOURCE_GROUP --query "[0]" -o json)
@@ -58,20 +155,19 @@ REGISTRY_PASSWORD=$(echo $CREDENTIALS | jq -r '.passwords[0].value')
 ENV_INFO=$(az containerapp env list --resource-group $RESOURCE_GROUP --query "[0]" -o json)
 CONTAINER_APPS_ENVIRONMENT_ID=$(echo $ENV_INFO | jq -r '.id')
 
-# Get location
-LOCATION=$(echo $REGISTRY_INFO | jq -r '.location')
+# Get location if not specified or empty
+if [ -z "$location" ]; then
+    location=$(echo $REGISTRY_INFO | jq -r '.location')
+fi
 
 # Check if we got all required values
-if [ -z "$REGISTRY_URL" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ] || [ -z "$CONTAINER_APPS_ENVIRONMENT_ID" ] || [ -z "$LOCATION" ]; then
+if [ -z "$REGISTRY_URL" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ] || [ -z "$CONTAINER_APPS_ENVIRONMENT_ID" ]; then
     echo -e "\033[0;31mError: Missing required values from Azure resources\033[0m"
-    echo -e "\033[0;33mMake sure you've provisioned the infrastructure with 'azd provision'.\033[0m"
     exit 1
 fi
 
-echo -e "\033[0;32mEnvironment values retrieved successfully.\033[0m"
 echo -e "\033[0;36mRegistry URL: $REGISTRY_URL\033[0m"
 echo -e "\033[0;36mRegistry Name: $REGISTRY_NAME\033[0m"
-echo -e "\033[0;36mLocation: $LOCATION\033[0m"
 
 # Log in to Azure Container Registry
 echo -e "\033[0;36mLogging in to Azure Container Registry...\033[0m"
@@ -99,12 +195,10 @@ if [ $? -ne 0 ]; then
 fi
 
 echo -e "\033[0;32mImage pushed to Azure Container Registry successfully.\033[0m"
+
+# Deploy the Container App
 echo -e "\033[0;33mNow deploying the Container App...\033[0m"
-
-# Deploy the Container App using the separate Bicep file
-echo -e "\033[0;36mDeploying Container App...\033[0m"
 TAGS="{ 'azd-env-name': '$ENV_NAME' }"
-
 DEPLOYMENT_NAME="container-app-deployment-$timestamp"
 
 az deployment group create \
@@ -113,7 +207,7 @@ az deployment group create \
   --template-file ./infra/containerapp.bicep \
   --parameters \
     environmentName=$ENV_NAME \
-    location=$LOCATION \
+    location=$location \
     tags=$TAGS \
     containerAppsEnvironmentId=$CONTAINER_APPS_ENVIRONMENT_ID \
     containerRegistryLoginServer=$REGISTRY_URL \
@@ -126,12 +220,12 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Update the CONTAINER_APP_URL in the environment
+# Get the Container App URL
 CONTAINER_APP_URL=$(az containerapp show --name "ca-$ENV_NAME" --resource-group $RESOURCE_GROUP --query "properties.configuration.ingress.fqdn" -o tsv)
 if [ $? -ne 0 ] || [ -z "$CONTAINER_APP_URL" ]; then
-    echo -e "\033[0;31mWarning: Failed to get Container App URL\033[0m"
+    echo -e "\033[0;33mWarning: Failed to get Container App URL\033[0m"
 else
-    # Use a local .env file since azd env set might have the same issue
+    # Store values in local .env file
     ENV_FILE=".azure/.env"
     
     # Create or update .env file
@@ -157,6 +251,6 @@ else
     azd env set CONTAINER_IMAGE_TAG "$imageTag" 2>/dev/null || true
 fi
 
-echo -e "\033[0;32mContainer App deployed successfully!\033[0m"
+echo -e "\n\033[0;32mDeployment completed successfully!\033[0m"
 echo -e "\033[0;32mYou can access your application at: https://$CONTAINER_APP_URL\033[0m"
 echo -e "\033[0;32mDeployed image tag: $imageTag\033[0m" 
